@@ -16,7 +16,7 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_actionOpenFile_triggered()
 {
-    QString Filename = QFileDialog::getOpenFileName(this, "C:\\", "*.mp4");
-
+    QString Filename = QFileDialog::getOpenFileName(this, "C:\\", "*");
+    ui->openGLWidget->OpenFile(Filename);
 }
 
