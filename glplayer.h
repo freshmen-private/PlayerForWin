@@ -6,6 +6,7 @@
 #include <QOpenGLFunctions_3_3_Core>
 #include <QQueue>
 #include <QImage>
+#include <video_decode.h>
 
 class GLPlayer:public QOpenGLWidget, QOpenGLFunctions_3_3_Core
 {
@@ -14,6 +15,8 @@ public:
     explicit GLPlayer(QWidget* parent = nullptr);
     ~GLPlayer();
     void OpenFile(QString FileName);
+public:
+    Video_decode* decoder;
 protected:
     virtual void initializeGL() override;
     virtual void resizeGL(int w, int h) override;

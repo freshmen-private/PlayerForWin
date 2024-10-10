@@ -2,7 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include "glplayer.h"
+#include "video_decode.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {

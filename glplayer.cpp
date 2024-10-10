@@ -1,6 +1,7 @@
 #include "glplayer.h"
 #include <QDebug>
 #include <QTimer>
+#include <QThread>
 
 GLPlayer::GLPlayer(QWidget* parent)
     : QOpenGLWidget(parent),
@@ -9,11 +10,9 @@ GLPlayer::GLPlayer(QWidget* parent)
     Texture(0),
     program(nullptr)
 {
-    qDebug()<<"come here";
-    //QString filename("C:/Users/Colorful/Desktop/picture5/pic0.jpg");
-    //OpenFile(filename);
     image.load("C:/Users/Colorful/Desktop/picture5/pic0.jpg");
     image = image.convertToFormat(QImage::Format_RGBA8888);
+    decoder = new Video_decode();
     QTimer* timer = new QTimer(this);
     timer->start(1000);
 }
@@ -24,10 +23,15 @@ GLPlayer::~GLPlayer()
 
 void GLPlayer::OpenFile(QString FileName)
 {
-    image.load(FileName);
-    image = image.convertToFormat(QImage::Format_RGBA8888);
-    qDebug()<<image.width();
-    update();
+    decoder->decode(FileName);
+    while(!decoder->image_queue.isEmpty())
+    {
+        image = decoder->image_queue.head();
+        //image = image.convertToFormat(QImage::Format_RGBA8888);
+        decoder->image_queue.pop_front();
+        //QThread::sleep(50);
+        //update();
+    }
 }
 
 void GLPlayer::initializeGL()
@@ -55,7 +59,8 @@ void GLPlayer::initializeGL()
 
     glGenTextures(1, &Texture);
     glBindTexture(GL_TEXTURE_2D, Texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width(), image.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, image.bits());
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.width(), image.height(), 0, GL_RGB, GL_UNSIGNED_BYTE, image.bits());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_LINEAR);
@@ -103,7 +108,7 @@ void GLPlayer::paintGL()
     //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, Texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width(), image.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, image.bits());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.width(), image.height(), 0, GL_RGB, GL_UNSIGNED_BYTE, image.bits());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_LINEAR);
@@ -112,7 +117,4 @@ void GLPlayer::paintGL()
     glBindVertexArray(VAO);
     // 使用OpenGL函数绘制一个四边形，0 是指从顶点数组的第一个顶点开始绘制。6 是指绘制的顶点数量，这里是一个四边形
     glDrawArrays(GL_TRIANGLES, 0, 6);
-    // QPainter Painter(this);
-    // Painter.drawImage(0, 0, image);
-    // Painter.end();
 }
