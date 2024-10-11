@@ -17,6 +17,12 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    Video_decode* decoder;
+
+signals:
+    void sendFileName(QString);
+public slots:
+    void getOneFrame(QImage tmpimg);
 
 private slots:
     void on_actionOpenFile_triggered();

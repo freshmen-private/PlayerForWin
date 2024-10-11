@@ -12,26 +12,18 @@ GLPlayer::GLPlayer(QWidget* parent)
 {
     image.load("C:/Users/Colorful/Desktop/picture5/pic0.jpg");
     image = image.convertToFormat(QImage::Format_RGBA8888);
-    decoder = new Video_decode();
     QTimer* timer = new QTimer(this);
-    timer->start(1000);
+    timer->start(16);
 }
 
 GLPlayer::~GLPlayer()
 {
 }
 
-void GLPlayer::OpenFile(QString FileName)
+void GLPlayer::OpenFile(QImage& tmpimg)
 {
-    decoder->decode(FileName);
-    while(!decoder->image_queue.isEmpty())
-    {
-        image = decoder->image_queue.head();
-        //image = image.convertToFormat(QImage::Format_RGBA8888);
-        decoder->image_queue.pop_front();
-        //QThread::sleep(50);
-        //update();
-    }
+    image = tmpimg;
+    update();
 }
 
 void GLPlayer::initializeGL()

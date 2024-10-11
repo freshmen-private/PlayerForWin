@@ -3,9 +3,12 @@
 
 Video_decode::Video_decode()
 {
-    std::cout << "Hello FFmpeg!" << std::endl;
-    unsigned version = avcodec_version();
-    std::cout << "version is:" << version;
+    FileName.clear();
+}
+
+Video_decode::~Video_decode()
+{
+
 }
 
 void Video_decode::saveFrame(AVFrame *pFrame, int width, int height,int index)
@@ -15,6 +18,24 @@ void Video_decode::saveFrame(AVFrame *pFrame, int width, int height,int index)
         memcpy(image.scanLine(y), pFrame->data[0] + y * pFrame->linesize[0], width * 3);
     }
     image_queue.push_back(image);
+}
+
+void Video_decode::getFileName(QString fileName)
+{
+    FileName = fileName;
+    std::cout<<fileName.toStdString().c_str()<<std::endl;
+}
+
+void Video_decode::run()
+{
+    while(1)
+    {
+        if(!FileName.isEmpty())
+        {
+            std::cout<<FileName.toStdString().c_str()<<std::endl;
+            decode(FileName);
+        }
+    }
 }
 
 void Video_decode::decode(QString& fileName)
@@ -125,8 +146,14 @@ void Video_decode::decode(QString& fileName)
                 // 处理帧（保存为图像文件）
                 sws_scale(sws_context, frame->data, frame->linesize, 0, codec_context->height,
                           pFrameRGB->data, pFrameRGB->linesize);
-                saveFrame(pFrameRGB, codec_context->width, codec_context->height, frame_count);
-                frame_count++;
+                QImage image(codec_context->width, codec_context->height, QImage::Format_BGR888);
+                for (int y = 0; y < codec_context->height; y++) {
+                    memcpy(image.scanLine(y), pFrameRGB->data[0] + y * pFrameRGB->linesize[0], codec_context->width * 3);
+                }
+                emit sendOneFrame(image);
+                QThread::msleep(50);
+                //saveFrame(pFrameRGB, codec_context->width, codec_context->height, frame_count);
+                //frame_count++;
             }
         }
         av_packet_unref(&packet);

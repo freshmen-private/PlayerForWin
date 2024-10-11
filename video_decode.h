@@ -13,14 +13,23 @@ extern "C"
 #include <libavutil/imgutils.h>
 }
 
-class Video_decode
+class Video_decode:public QThread
 {
+    Q_OBJECT
 public:
     Video_decode();
     ~Video_decode();
     void decode(QString& fileName);
     void saveFrame(AVFrame *pFrame, int width, int height,int index);
     QQueue<QImage> image_queue;
+signals:
+    void sendOneFrame(QImage);
+public slots:
+    void getFileName(QString fileName);
+protected:
+    void run();
+private:
+    QString FileName;
 };
 
 #endif // VIDEO_DECODE_H
