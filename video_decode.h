@@ -11,6 +11,7 @@ extern "C"
 #include <libswscale/swscale.h>
 #include <libavdevice/avdevice.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/time.h>
 }
 
 class Video_decode:public QThread
@@ -30,6 +31,8 @@ protected:
     void run();
 private:
     QString FileName;
+    double Time_Base;
+    double currentTime;
 };
 
 #endif // VIDEO_DECODE_H

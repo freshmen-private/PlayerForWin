@@ -1,5 +1,6 @@
 #include "video_decode.h"
 #include <iostream>
+#include <QDebug>
 
 Video_decode::Video_decode()
 {
@@ -69,7 +70,10 @@ void Video_decode::decode(QString& fileName)
             break;
         }
     }
-
+    qDebug()<<"time_base.den = "<<format_context->streams[video_stream_index]->time_base.den;
+    qDebug()<<"time_base.num = "<<format_context->streams[video_stream_index]->time_base.num;
+    qDebug()<<format_context->streams[video_stream_index]->pts_wrap_bits;
+    Time_Base = (double)format_context->streams[video_stream_index]->time_base.num / (double)format_context->streams[video_stream_index]->time_base.den * 1000;
     if (video_stream_index == -1) {
         fprintf(stderr, "Could not find a video stream\n");
         avformat_close_input(&format_context);
@@ -103,6 +107,8 @@ void Video_decode::decode(QString& fileName)
         avformat_close_input(&format_context);
         return;
     }
+    qDebug()<<codec_context->framerate.den<<" "<<codec_context->framerate.num;
+    qDebug()<<codec_context->pkt_timebase.den<<" "<<codec_context->pkt_timebase.num;
 
     // 分配帧
     frame = av_frame_alloc();
@@ -113,19 +119,22 @@ void Video_decode::decode(QString& fileName)
         avformat_close_input(&format_context);
         return;
     }
-    int num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codec_context->width, codec_context->height, 1);
+    int num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, codec_context->width, codec_context->height, 1);
     uint8_t *buffer = (uint8_t *)av_malloc(num_bytes * sizeof(uint8_t));
-    av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB24, codec_context->width, codec_context->height, 1);
+    av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB32, codec_context->width, codec_context->height, 1);
 
     sws_context = sws_getContext(codec_context->width, codec_context->height, codec_context->pix_fmt,
-                                 codec_context->width, codec_context->height, AV_PIX_FMT_RGB24,
+                                 codec_context->width, codec_context->height, AV_PIX_FMT_RGB32,
                                  SWS_BILINEAR, NULL, NULL, NULL);
 
     int frame_count = 0;
     static struct SwsContext *img_convert_ctx;
     // 读取数据包
+    currentTime = av_gettime();
+    qDebug()<<"currentTime = "<<currentTime;
     while (av_read_frame(format_context, &packet) >= 0) {
         // 只处理视频流
+        qDebug()<<packet.time_base.den<<" "<<packet.time_base.num;
         if (packet.stream_index == video_stream_index) {
             // 解码视频帧
             int response = avcodec_send_packet(codec_context, &packet);
@@ -146,12 +155,21 @@ void Video_decode::decode(QString& fileName)
                 // 处理帧（保存为图像文件）
                 sws_scale(sws_context, frame->data, frame->linesize, 0, codec_context->height,
                           pFrameRGB->data, pFrameRGB->linesize);
-                QImage image(codec_context->width, codec_context->height, QImage::Format_BGR888);
+                QImage image(codec_context->width, codec_context->height, QImage::Format_RGBA8888);
                 for (int y = 0; y < codec_context->height; y++) {
-                    memcpy(image.scanLine(y), pFrameRGB->data[0] + y * pFrameRGB->linesize[0], codec_context->width * 3);
+                    memcpy(image.scanLine(y), pFrameRGB->data[0] + y * pFrameRGB->linesize[0], codec_context->width * 4);
                 }
-                emit sendOneFrame(image);
-                QThread::msleep(50);
+                QImage bgraImage = image.convertToFormat(QImage::Format_ARGB32);
+                static int k = 0;
+                double delayTime = (double)(frame->pts - k) * Time_Base;
+                qDebug()<<"delayTime "<<frame->pts;
+                //qDebug()<<"timebase.num = "<<frame->time_base.num << " timebase.den = "<<frame->time_base.den;
+
+                QThread::msleep(delayTime);
+                emit sendOneFrame(bgraImage);
+
+                k = frame->pts;
+
                 //saveFrame(pFrameRGB, codec_context->width, codec_context->height, frame_count);
                 //frame_count++;
             }

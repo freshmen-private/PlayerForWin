@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include "video_decode.h"
+#include "mediadecoder.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -18,6 +19,8 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
     Video_decode* decoder;
+
+    MediaDecoder* media;
 
 signals:
     void sendFileName(QString);
