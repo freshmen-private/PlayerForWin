@@ -28,6 +28,10 @@ int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
         return -1;
     pkt1->pkt = *pkt;
     pkt1->next = NULL;
+    if(q->mutex == NULL)
+    {
+        qDebug()<<"put mutex error";
+    }
     SDL_LockMutex(q->mutex);
     if (!q->last_pkt)
         q->first_pkt = pkt1;
@@ -36,6 +40,10 @@ int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
     q->last_pkt = pkt1;
     q->nb_packets++;
     q->size += pkt1->pkt.size;
+    if(q->cond == NULL)
+    {
+        qDebug()<<"put cond error";
+    }
     SDL_CondSignal(q->cond);
     SDL_UnlockMutex(q->mutex);
     return 0;
@@ -43,6 +51,10 @@ int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
 static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block) {
     AVPacketlist *pkt1 = NULL;
     int ret;
+    if(q->mutex == NULL)
+    {
+        qDebug()<<"get mutex error";
+    }
     SDL_LockMutex(q->mutex);
     for (;;) {
         pkt1 = q->first_pkt;
@@ -52,14 +64,18 @@ static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block) {
                 q->last_pkt = NULL;
             q->nb_packets--;
             q->size -= pkt1->pkt.size;
-            // av_packet_ref(pkt, &pkt1->pkt);
-            *pkt = pkt1->pkt;
+            av_packet_ref(pkt, &pkt1->pkt);
+            // *pkt = pkt1->pkt;
             ret = 1;
             break;
         } else if (!block) {
             ret = 0;
             break;
         } else {
+            if(q->cond == NULL)
+            {
+                qDebug()<<"put cond error";
+            }
             SDL_CondWait(q->cond, q->mutex);
         }
     }
@@ -68,23 +84,19 @@ static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block) {
 }
 static int audio_decode_frame(MediaState *is)
 {
-    qDebug()<<"audio decode frame";
     AVPacket pkt;
     int data_size;
     static AVFrame* aFrame = av_frame_alloc();
-    qDebug()<<"avFrame alloc success";
+    qDebug()<<"audio avFrame alloc success";
     int i_i = 0, j_j = 0;
-    //qDebug()<<"aFrame.nb_samples = "<<aFrame->nb_samples;
-
     for(;;)
     {
         data_size = 0;
-        qDebug()<<"get aqueue";
         if(packet_queue_get(is->aqueue, &pkt, 1) < 0)
         {
             return -1;
         }
-        qDebug()<<"get aqueue";
+        qDebug()<<"audio get packet";
         int ret = avcodec_send_packet(is->aCodecC, &pkt);
         qDebug()<<"i = " << i_i++;
         if( ret < 0 ) {
@@ -137,18 +149,16 @@ static int audio_decode_frame(MediaState *is)
                 }
             }
             memcpy(is->audio_decode_buffer, (uint8_t*)sample_buffer, aFrame->linesize[0]);
-
+            data_size += aFrame->linesize[0];
             if (aFrame->nb_samples <= 0)
             {
                 continue;
             }
-
-            data_size += aFrame->linesize[0];
         }
         if(pkt.data)
             av_packet_unref(&pkt);
         // qDebug()<<"data_size = "<<data_size;
-        av_free(aFrame);
+        // av_free(aFrame);
         return data_size;
     }
 }
@@ -164,9 +174,9 @@ static void audio_callback(void *userdata, Uint8 *stream, int len) {
         /*   们的缓冲为空，没有数据可供copy，这时候需要调用audio_decode_frame来解码出更 */
          /*   多的桢数据 */
         if (is->audio_buf_index >= is->audio_buf_size) {
-            qDebug()<<"decode frame";
+            // qDebug()<<"decode frame";
             audio_data_size = audio_decode_frame(is);
-            qDebug()<<"decode frame finish";
+            // qDebug()<<"decode frame finish";
             /* audio_data_size < 0 标示没能解码出数据，我们默认播放静音 */
             if (audio_data_size < 0) {
                 /* silence */
@@ -317,36 +327,6 @@ int video_thread(void *arg)
         }
 
         while (avcodec_receive_frame(is->vCodecC, pFrame) >= 0) {
-            // if (packet->dts == AV_NOPTS_VALUE && pFrame->pts != AV_NOPTS_VALUE)
-            // {
-            //     video_pts = pFrame->pts;
-            // }
-            // else if (packet->dts != AV_NOPTS_VALUE)
-            // {
-            //     video_pts = packet->dts;
-            // }
-            // else
-            // {
-            //     video_pts = 0;
-            // }
-            // video_pts *= av_q2d(is->video_st->time_base);
-            // video_pts = synchronize_video(is, pFrame, video_pts);
-            // while(1)
-            // {
-            //     if(is->audioStream >= 0)
-            //     {
-            //         audio_pts = is->audio_clock;
-            //     }
-            //     else{
-
-            //     }
-            //     if (video_pts <= audio_pts) break;
-
-            //     int delayTime = (video_pts - audio_pts) * 1000;
-
-            //     delayTime = delayTime > 5 ? 5:delayTime;
-            //     //SDL_Delay(33);
-            // }
             sws_scale(is->swsC,
                       pFrame->data, pFrame->linesize, 0, is->vCodecC->height,
                       pFrameRGB->data, pFrameRGB->linesize);
@@ -410,6 +390,7 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
             file_path = temp.toStdString().data();
         }
         else{
+            QThread::msleep(1);
             continue;
         }
         if (SDL_Init(SDL_INIT_AUDIO)) {
@@ -418,7 +399,6 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
         }
         qDebug()<<file_path;
         MediaState *is = &mMediastate;
-        AVFormatContext *pFormatCtx;
         AVCodecContext *pCodecCtx;
         const AVCodec *pCodec;
 
@@ -428,13 +408,13 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
         //int audioStream ,videoStream, i;
 
         //Allocate an AVFormatContext.
-        pFormatCtx = avformat_alloc_context();
-        if (avformat_open_input(&pFormatCtx, file_path, NULL, NULL) != 0) {
+        is->FC = avformat_alloc_context();
+        if (avformat_open_input(&is->FC, file_path, NULL, NULL) != 0) {
             qDebug()<<"can't open the file. \n";
             continue;
         }
 
-        if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
+        if (avformat_find_stream_info(is->FC, NULL) < 0) {
             qDebug()<<"Could't find stream infomation.\n";
             continue;
         }
@@ -442,27 +422,26 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
         mMediastate.audioStream = -1;
 
         ///循环查找视频中包含的流信息，
-        for (unsigned int i = 0; i < pFormatCtx->nb_streams; i++) {
-            if (pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+        for (unsigned int i = 0; i < is->FC->nb_streams; i++) {
+            if (is->FC->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
             {
                 mMediastate.videoStream = i;
             }
-            if (pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
+            if (is->FC->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
             {
                 mMediastate.audioStream = i;
             }
         }
         ///如果videoStream为-1 说明没有找到视频流
         qDebug()<<"get video and audio stream";
-        is->FC = pFormatCtx;
         if (mMediastate.videoStream >= 0) {
-            pCodec = avcodec_find_decoder(pFormatCtx->streams[mMediastate.videoStream]->codecpar->codec_id);
+            pCodec = avcodec_find_decoder(is->FC->streams[mMediastate.videoStream]->codecpar->codec_id);
             if(is->vCodecC != NULL)
             {
                 avcodec_free_context(&mMediastate.vCodecC);
             }
             is->vCodecC = avcodec_alloc_context3(pCodec);
-            avcodec_parameters_to_context(is->vCodecC, pFormatCtx->streams[mMediastate.videoStream]->codecpar);
+            avcodec_parameters_to_context(is->vCodecC, is->FC->streams[mMediastate.videoStream]->codecpar);
             //qDebug()<<"open video decoder";
             if (pCodec == NULL) {
                 printf("PCodec not found.\n");
@@ -480,19 +459,18 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
             is->video_thread = SDL_CreateThread(video_thread, "video_thread", &mMediastate);
         }
         if (mMediastate.audioStream >= 0) {
-            aCodec = avcodec_find_decoder(pFormatCtx->streams[mMediastate.audioStream]->codecpar->codec_id);
+            aCodec = avcodec_find_decoder(is->FC->streams[mMediastate.audioStream]->codecpar->codec_id);
             if(is->aCodecC != NULL)
             {
                 avcodec_free_context(&mMediastate.aCodecC);
             }
             is->aCodecC = avcodec_alloc_context3(aCodec);
-            avcodec_parameters_to_context(is->aCodecC, pFormatCtx->streams[mMediastate.audioStream]->codecpar);
+            avcodec_parameters_to_context(is->aCodecC, is->FC->streams[mMediastate.audioStream]->codecpar);
             if (aCodec == NULL) {
                 printf("aCodec not found.\n");
                 continue;
             }
 
-            audio_stream_component_open(&mMediastate);
             ///打开音频解码器
             qDebug()<<"open audio decoder";
             if (avcodec_open2(is->aCodecC, aCodec, NULL) < 0) {
@@ -501,12 +479,13 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
             }
             qDebug()<<"open audio decoder success";
             packet_queue_init(is->aqueue);
+            audio_stream_component_open(&mMediastate);
             //is->audio_st = pFormatCtx->streams[mMediastate.audioStream];
         }
         qDebug()<<"open video and audio decoder";
         is->Decoder = this;
         AVPacket *packet = av_packet_alloc(); //分配一个packet 用来存放读取的视频
-        av_dump_format(pFormatCtx, 0, file_path, 0); //输出视频信息
+        av_dump_format(is->FC, 0, file_path, 0); //输出视频信息
         qDebug()<<"ready get into while";
         while (1)
         {
@@ -517,7 +496,7 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
                 SDL_Delay(10);
                 continue;
             }
-            if (av_read_frame(pFormatCtx, packet) < 0)
+            if (av_read_frame(is->FC, packet) < 0)
             {
                 break; //这里认为视频读取完了
             }
@@ -537,8 +516,14 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
                 // Free the packet that was allocated by av_read_frame
                 av_packet_unref(packet);
             }
+            SDL_Delay(10);
         }
-        avformat_close_input(&pFormatCtx);
+        while(1)
+        {
+            SDL_Delay(10);
+        }
+        avformat_close_input(&is->FC);
         av_packet_free(&packet);
+
     }
 }
