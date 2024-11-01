@@ -31,6 +31,8 @@ private slots:
     void on_actionOpenFile_triggered();
 
 private:
+    bool changeSize;
+    int width, height;
     Ui::MainWindow *ui;
 };
 #endif // MAINWINDOW_H

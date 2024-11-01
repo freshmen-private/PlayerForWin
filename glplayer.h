@@ -20,7 +20,12 @@ protected:
     virtual void resizeGL(int w, int h) override;
     virtual void paintGL() override;
 
+protected slots:
+    void getOneFrame(QImage wait2Display);
+
 private:
+    float ww,hh;
+    float x,y,width,height;
     GLuint VAO, VBO;
     GLuint Texture;
     QOpenGLShaderProgram program;

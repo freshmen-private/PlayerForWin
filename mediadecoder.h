@@ -57,9 +57,12 @@ typedef struct MediaState{
     int audio_buf_size, audio_buf_index;
 
     int videoStream, audioStream;
+    bool audioExist;
 
     SDL_Thread* video_thread;
-
+    double audio_time_base;
+    int64_t audio_pts;
+    double time_base;
     bool isPause;
 
     MediaDecoder *Decoder; //记录下这个类的指针  主要用于在线程里面调用激发信号的函数
@@ -76,7 +79,6 @@ public:
 
     void disPlayVideo(QImage image);
 
-    void mediastateInit();
 signals:
     void sendOneFrame(QImage); //没获取到一帧图像 就发送此信号
 public slots:

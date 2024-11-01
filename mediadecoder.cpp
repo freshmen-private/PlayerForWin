@@ -87,7 +87,7 @@ static int audio_decode_frame(MediaState *is)
     AVPacket pkt;
     int data_size;
     static AVFrame* aFrame = av_frame_alloc();
-    qDebug()<<"audio avFrame alloc success";
+    //qDebug()<<"audio avFrame alloc success";
     int i_i = 0, j_j = 0;
     for(;;)
     {
@@ -96,9 +96,9 @@ static int audio_decode_frame(MediaState *is)
         {
             return -1;
         }
-        qDebug()<<"audio get packet";
+        //qDebug()<<"audio get packet";
         int ret = avcodec_send_packet(is->aCodecC, &pkt);
-        qDebug()<<"i = " << i_i++;
+        //qDebug()<<"i = " << i_i++;
         if( ret < 0 ) {
             printf("Error in decoding audio frame. %d\n", ret);
             exit(0);
@@ -106,7 +106,7 @@ static int audio_decode_frame(MediaState *is)
         // qDebug()<<"avcodec_send_packet ret = " << ret;
         while(avcodec_receive_frame(is->aCodecC, aFrame) >= 0)
         {
-            qDebug()<<"aFrame->nb_samples = "<<aFrame->nb_samples;
+            //qDebug()<<"aFrame->nb_samples = "<<aFrame->nb_samples;
             int in_samples = aFrame->nb_samples;
             int bytes_per_sample;
             switch(is->aCodecC->sample_fmt)
@@ -129,7 +129,7 @@ static int audio_decode_frame(MediaState *is)
                 // 处理错误情况
                 return -1;
             }
-            qDebug()<<"channels = "<<aFrame->ch_layout.nb_channels;
+            //qDebug()<<"channels = "<<aFrame->ch_layout.nb_channels;
             float *sample_buffer = (float*)malloc(aFrame->linesize[0]);
             memset(sample_buffer, 0, aFrame->linesize[0]);
 
@@ -163,7 +163,7 @@ static int audio_decode_frame(MediaState *is)
     }
 }
 static void audio_callback(void *userdata, Uint8 *stream, int len) {
-    qDebug()<<"audio callback";
+    //qDebug()<<"audio callback";
     MediaState *is = (MediaState *) userdata;
     int len1, audio_data_size;
     // double pts;
@@ -295,6 +295,10 @@ int audio_stream_component_open(MediaState *is)
 int video_thread(void *arg)
 {
     MediaState *is = (MediaState *) arg;
+    while(is->aCodecC == NULL || is->vCodecC == NULL)
+    {
+        QThread::msleep(1);
+    }
     AVPacket pkt1, *packet = &pkt1;
 
     int ret, numBytes;
@@ -305,6 +309,8 @@ int video_thread(void *arg)
     uint8_t *out_buffer_rgb; //解码后的rgb数据
     pFrame = av_frame_alloc();
     pFrameRGB = av_frame_alloc();
+    int current = 0;
+    is->audio_pts = av_gettime();
     ///这里我们改成了 将解码后的YUV数据转换成RGB32
     is->swsC = sws_getContext(is->vCodecC->width, is->vCodecC->height,
                                      is->vCodecC->pix_fmt, is->vCodecC->width, is->vCodecC->height,
@@ -336,9 +342,18 @@ int video_thread(void *arg)
                 memcpy(image.scanLine(y), pFrameRGB->data[0] + y * pFrameRGB->linesize[0], is->vCodecC->width * 4);
             }
             QImage bgraImage = image.convertToFormat(QImage::Format_ARGB32);
-            SDL_Delay(33);
-            is->Decoder->disPlayVideo(bgraImage); //调用激发信号的函数
+            // if(is->time_base * pFrame->pts > is->audio_pts)
+            // {
+            //     SDL_Delay(is->time_base * pFrame->pts - is->audio_pts);
+            // }
 
+            while(av_gettime() - is->audio_pts < pFrame->pts && pFrame->pts != 0)
+            {
+                SDL_Delay(10);
+            }
+            // SDL_Delay(is->time_base * (pFrame->pts - current));
+            is->Decoder->disPlayVideo(bgraImage); //调用激发信号的函数
+            current = pFrame->pts;
             av_packet_unref(packet);
         }
     }
@@ -350,6 +365,7 @@ int video_thread(void *arg)
 }
 MediaDecoder::MediaDecoder()
 {
+    mMediastate.video_thread = SDL_CreateThread(video_thread, "video_thread", &mMediastate);
     mMediastate.aqueue = new PacketQueue();
     mMediastate.vqueue = new PacketQueue();
     mMediastate.aCodecC = NULL;
@@ -367,7 +383,7 @@ void MediaDecoder::disPlayVideo(QImage img)
 
 void MediaDecoder::startPlay()
 {
-    ///调用 QThread 的start函数 将会自动执行下面的run函数 run函数是一个新的线程
+    /// 调用 QThread 的start函数 将会自动执行下面的run函数 run函数是一个新的线程
     this->start();
 }
 
@@ -399,10 +415,11 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
         }
         qDebug()<<file_path;
         MediaState *is = &mMediastate;
-        AVCodecContext *pCodecCtx;
+        // AVFormatContext* FormatCtx;
+        // AVCodecContext* aCodecC;
+        // AVCodecContext* pCodecC;
         const AVCodec *pCodec;
 
-        AVCodecContext *aCodecCtx;
         const AVCodec *aCodec;
 
         //int audioStream ,videoStream, i;
@@ -452,13 +469,15 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
                 printf("Could not open video codec.\n");
                 continue;
             }
+            is->time_base = (double)is->FC->streams[mMediastate.videoStream]->time_base.num / (double)is->FC->streams[mMediastate.videoStream]->time_base.den * 1000.0;
             //is->video_st = pFormatCtx->streams[mMediastate.videoStream];
             //qDebug()<<"open video decoder";
             packet_queue_init(is->vqueue);
             ///创建一个线程专门用来解码视频
-            is->video_thread = SDL_CreateThread(video_thread, "video_thread", &mMediastate);
         }
         if (mMediastate.audioStream >= 0) {
+            mMediastate.audio_time_base = (double)is->FC->streams[mMediastate.audioStream]->time_base.num / (double)is->FC->streams[mMediastate.audioStream]->time_base.den * 1000.0;
+            is->audioExist = true;
             aCodec = avcodec_find_decoder(is->FC->streams[mMediastate.audioStream]->codecpar->codec_id);
             if(is->aCodecC != NULL)
             {
@@ -516,7 +535,6 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
                 // Free the packet that was allocated by av_read_frame
                 av_packet_unref(packet);
             }
-            SDL_Delay(10);
         }
         while(1)
         {

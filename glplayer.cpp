@@ -22,8 +22,7 @@ GLPlayer::~GLPlayer()
 
 void GLPlayer::OpenFile(QImage& tmpimg)
 {
-    image = tmpimg;
-    update();
+
 }
 
 void GLPlayer::initializeGL()
@@ -86,13 +85,43 @@ void GLPlayer::initializeGL()
 
 void GLPlayer::resizeGL(int w, int h)
 {
-    glViewport(0, 0, w, h);
+    float imgRatio, srcRatio;
+    //float x, y;
+    //float height, width;
+    if(!image.isNull())
+    {
+        imgRatio = (float)image.width() / (float)image.height();
+        srcRatio = (float)w / (float)h;
+        if(imgRatio > srcRatio)
+        {
+            x = 0.0;
+            y = ((float)h - ((float)w / imgRatio)) / 2.0;
+            width = w;
+            height = (float)w / imgRatio;
+        }
+        else
+        {
+            y = 0.0;
+            x = ((float)w - ((float)h * imgRatio)) / 2.0;
+            width = (float)h * imgRatio;
+            height = h;
+        }
+    }
+    else
+    {
+        x = 0.0, y= 0.0;
+        width = w;
+        height = h;
+    }
+    qDebug()<<"x, y, width, height"<<x<<" "<<y<<" "<<width<<" "<<height<<" "<<w<<" "<<h;
+    glViewport(x, y, width, height);
 }
 
 void GLPlayer::paintGL()
 {
     // qDebug()<<image.width();
     // 使用指定的清除颜色清除颜色缓冲区
+    glViewport(x,y,width,height);
     glClearColor(0.2f, 0.4f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     // 激活着色器程序，准备进行绘制
@@ -109,4 +138,11 @@ void GLPlayer::paintGL()
     glBindVertexArray(VAO);
     // 使用OpenGL函数绘制一个四边形，0 是指从顶点数组的第一个顶点开始绘制。6 是指绘制的顶点数量，这里是一个四边形
     glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+void GLPlayer::getOneFrame(QImage wait2Display)
+{
+    //qDebug()<<"img.width = "<<wait2Display.width()<<" img.height = "<<wait2Display.height();
+    image = wait2Display;
+    update();
 }

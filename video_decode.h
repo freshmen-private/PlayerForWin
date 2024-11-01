@@ -24,7 +24,7 @@ public:
     void saveFrame(AVFrame *pFrame, int width, int height,int index);
     QQueue<QImage> image_queue;
 signals:
-    void sendOneFrame(QImage);
+    void sendOneFrame(QImage&);
 public slots:
     void getFileName(QString fileName);
 protected:
