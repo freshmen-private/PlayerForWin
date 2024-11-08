@@ -81,6 +81,7 @@ public:
 
 signals:
     void sendOneFrame(QImage); //没获取到一帧图像 就发送此信号
+    void sendFrameSize(QRect rect);
 public slots:
     void getFileName(QString filename);
 

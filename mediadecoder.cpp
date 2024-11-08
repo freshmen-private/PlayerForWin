@@ -155,6 +155,7 @@ static int audio_decode_frame(MediaState *is)
                 continue;
             }
         }
+        qDebug()<<"audio pts = "<<aFrame->pts;
         if(pkt.data)
             av_packet_unref(&pkt);
         // qDebug()<<"data_size = "<<data_size;
@@ -217,22 +218,22 @@ static void audio_callback(void *userdata, Uint8 *stream, int len) {
 //     }
 //     return pts;
 // }
-// static double synchronize_video(MediaState *is, AVFrame *src_frame, double pts) {
-//     double frame_delay;
-//     if (pts != 0) {
-//         /* if we have pts, set video clock to it */
-//         is->video_clock = pts;
-//     } else {
-//         /* if we aren't given a pts, set it to the clock */
-//         pts = is->video_clock;
-//     }
-//     /* update the video clock */
-//     frame_delay = av_q2d(is->codec->time_base);
-//     /* if we are repeating a frame, adjust clock accordingly */
-//     frame_delay += src_frame->repeat_pict * (frame_delay * 0.5);
-//     is->video_clock += frame_delay;
-//     return pts;
-// }
+static double synchronize_video(MediaState *is, AVFrame *src_frame, double pts) {
+    double frame_delay;
+    if (pts != 0) {
+        /* if we have pts, set video clock to it */
+        is->video_clock = pts;
+    } else {
+        /* if we aren't given a pts, set it to the clock */
+        pts = is->video_clock;
+    }
+    /* update the video clock */
+    frame_delay = av_q2d(is->vCodecC->time_base);
+    /* if we are repeating a frame, adjust clock accordingly */
+    frame_delay += src_frame->repeat_pict * (frame_delay * 0.5);
+    is->video_clock += frame_delay;
+    return pts;
+}
 // this function is used to configure audioDevice
 int audio_stream_component_open(MediaState *is)
 {
@@ -310,11 +311,8 @@ int video_thread(void *arg)
     pFrame = av_frame_alloc();
     pFrameRGB = av_frame_alloc();
     int current = 0;
-    is->audio_pts = av_gettime();
     ///这里我们改成了 将解码后的YUV数据转换成RGB32
-    is->swsC = sws_getContext(is->vCodecC->width, is->vCodecC->height,
-                                     is->vCodecC->pix_fmt, is->vCodecC->width, is->vCodecC->height,
-                                     AV_PIX_FMT_RGB32, SWS_BICUBIC, NULL, NULL, NULL);
+
 
     numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB32, is->vCodecC->width, is->vCodecC->height, 1);
 
@@ -346,10 +344,10 @@ int video_thread(void *arg)
             // {
             //     SDL_Delay(is->time_base * pFrame->pts - is->audio_pts);
             // }
-
-            while(av_gettime() - is->audio_pts < pFrame->pts && pFrame->pts != 0)
+            qDebug()<<"video pts = "<<pFrame->pts;
+            while((av_gettime() - is->audio_pts) / 100 <= pFrame->pts && pFrame->pts != 0)
             {
-                SDL_Delay(10);
+                SDL_Delay(5);
             }
             // SDL_Delay(is->time_base * (pFrame->pts - current));
             is->Decoder->disPlayVideo(bgraImage); //调用激发信号的函数
@@ -370,6 +368,9 @@ MediaDecoder::MediaDecoder()
     mMediastate.vqueue = new PacketQueue();
     mMediastate.aCodecC = NULL;
     mMediastate.vCodecC = NULL;
+    mMediastate.audio_pts = 0;
+    mMediastate.aFrame = NULL;
+    mMediastate.pFrame = NULL;
 }
 MediaDecoder::~MediaDecoder()
 {
@@ -452,7 +453,8 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
         ///如果videoStream为-1 说明没有找到视频流
         qDebug()<<"get video and audio stream";
         if (mMediastate.videoStream >= 0) {
-            pCodec = avcodec_find_decoder(is->FC->streams[mMediastate.videoStream]->codecpar->codec_id);
+            mMediastate.pFrame = is->FC->streams[mMediastate.videoStream];
+            pCodec = avcodec_find_decoder(is->pFrame->codecpar->codec_id);
             if(is->vCodecC != NULL)
             {
                 avcodec_free_context(&mMediastate.vCodecC);
@@ -464,6 +466,9 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
                 printf("PCodec not found.\n");
                 continue;
             }
+            is->swsC = sws_getContext(is->vCodecC->width, is->vCodecC->height,
+                                      is->vCodecC->pix_fmt, is->vCodecC->width, is->vCodecC->height,
+                                      AV_PIX_FMT_RGB32, SWS_BICUBIC, NULL, NULL, NULL);
             ///打开视频解码器
             if (avcodec_open2(is->vCodecC, pCodec, NULL) < 0) {
                 printf("Could not open video codec.\n");
@@ -476,7 +481,8 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
             ///创建一个线程专门用来解码视频
         }
         if (mMediastate.audioStream >= 0) {
-            mMediastate.audio_time_base = (double)is->FC->streams[mMediastate.audioStream]->time_base.num / (double)is->FC->streams[mMediastate.audioStream]->time_base.den * 1000.0;
+            mMediastate.aFrame = is->FC->streams[mMediastate.audioStream];
+            mMediastate.audio_time_base = (double)is->aFrame->time_base.num / (double)is->FC->streams[mMediastate.audioStream]->time_base.den * 1000.0;
             is->audioExist = true;
             aCodec = avcodec_find_decoder(is->FC->streams[mMediastate.audioStream]->codecpar->codec_id);
             if(is->aCodecC != NULL)
@@ -506,6 +512,7 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
         AVPacket *packet = av_packet_alloc(); //分配一个packet 用来存放读取的视频
         av_dump_format(is->FC, 0, file_path, 0); //输出视频信息
         qDebug()<<"ready get into while";
+        is->audio_pts = av_gettime();
         while (1)
         {
             //这里做了个限制  当队列里面的数据超过某个大小的时候 就暂停读取  防止一下子就把视频读完了，导致的空间分配不足

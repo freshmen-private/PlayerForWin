@@ -10,6 +10,10 @@ GLPlayer::GLPlayer(QWidget* parent)
     Texture(0),
     program(nullptr)
 {
+    x = 0.0;
+    y = 0.0;
+    width = 0.0;
+    height = 0.0;
     image.load("C:/Users/Colorful/Desktop/picture5/pic0.jpg");
     image = image.convertToFormat(QImage::Format_RGBA8888);
     QTimer* timer = new QTimer(this);
@@ -85,9 +89,9 @@ void GLPlayer::initializeGL()
 
 void GLPlayer::resizeGL(int w, int h)
 {
+    srcW = w;
+    srcH = h;
     float imgRatio, srcRatio;
-    //float x, y;
-    //float height, width;
     if(!image.isNull())
     {
         imgRatio = (float)image.width() / (float)image.height();
@@ -113,7 +117,6 @@ void GLPlayer::resizeGL(int w, int h)
         width = w;
         height = h;
     }
-    qDebug()<<"x, y, width, height"<<x<<" "<<y<<" "<<width<<" "<<height<<" "<<w<<" "<<h;
     glViewport(x, y, width, height);
 }
 
@@ -135,14 +138,40 @@ void GLPlayer::paintGL()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_LINEAR);
     // 绑定之前创建的顶点数组对象
-    glBindVertexArray(VAO);
+    glBindVertexArray(VAO );
     // 使用OpenGL函数绘制一个四边形，0 是指从顶点数组的第一个顶点开始绘制。6 是指绘制的顶点数量，这里是一个四边形
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
 void GLPlayer::getOneFrame(QImage wait2Display)
 {
-    //qDebug()<<"img.width = "<<wait2Display.width()<<" img.height = "<<wait2Display.height();
     image = wait2Display;
+    float imgRatio, srcRatio;
+    if(!image.isNull())
+    {
+        imgRatio = (float)image.width() / (float)image.height();
+        srcRatio = (float)srcW / (float)srcH;
+        if(imgRatio > srcRatio)
+        {
+            x = 0.0;
+            y = ((float)srcH - ((float)srcW / imgRatio)) / 2.0;
+            width = srcW;
+            height = (float)srcW / imgRatio;
+        }
+        else
+        {
+            y = 0.0;
+            x = ((float)srcW - ((float)srcH * imgRatio)) / 2.0;
+            width = (float)srcH * imgRatio;
+            height = srcH;
+        }
+    }
+    else
+    {
+        x = 0.0, y= 0.0;
+        width = srcW;
+        height = srcH;
+    }
+
     update();
 }

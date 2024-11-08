@@ -24,6 +24,7 @@ protected slots:
     void getOneFrame(QImage wait2Display);
 
 private:
+    int srcW, srcH;
     float ww,hh;
     float x,y,width,height;
     GLuint VAO, VBO;
