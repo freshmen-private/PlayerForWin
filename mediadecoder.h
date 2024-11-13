@@ -48,6 +48,8 @@ class MediaDecoder;
 typedef struct MediaState{
     AVFormatContext* FC;
     AVCodecContext* aCodecC, * vCodecC;
+    AVStream* aStream,* pStream;
+    // const AVCodec* aCodec, * pCodec;
 
     SwsContext* swsC;
 
@@ -63,6 +65,7 @@ typedef struct MediaState{
     double audio_time_base;
     int64_t audio_pts;
     double time_base;
+    double video_clock, audio_clock;
     bool isPause;
 
     MediaDecoder *Decoder; //记录下这个类的指针  主要用于在线程里面调用激发信号的函数

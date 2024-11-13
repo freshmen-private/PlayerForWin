@@ -85,10 +85,10 @@ static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block) {
 static int audio_decode_frame(MediaState *is)
 {
     AVPacket pkt;
-    int data_size;
+    int data_size, n;
     static AVFrame* aFrame = av_frame_alloc();
     //qDebug()<<"audio avFrame alloc success";
-    int i_i = 0, j_j = 0;
+    double pts;
     for(;;)
     {
         data_size = 0;
@@ -96,9 +96,15 @@ static int audio_decode_frame(MediaState *is)
         {
             return -1;
         }
-        //qDebug()<<"audio get packet";
+        qDebug()<<"audio_pts = "<<pkt.pts;
+        if (pkt.pts != AV_NOPTS_VALUE) {
+            is->audio_clock = av_q2d(is->aStream->time_base) * pkt.pts;
+        }
+        qDebug()<<"is->aStream->time_base = "<<is->aStream->time_base.den<<" "<<is->aStream->time_base.num;
+        qDebug()<<"is->audio_clock = "<<is->audio_clock;
+        //qDebug()<<"packet.dts = "<<pkt.dts;
+        //qDebug()<<"packet.pts = "<<pkt.pts;
         int ret = avcodec_send_packet(is->aCodecC, &pkt);
-        //qDebug()<<"i = " << i_i++;
         if( ret < 0 ) {
             printf("Error in decoding audio frame. %d\n", ret);
             exit(0);
@@ -155,19 +161,17 @@ static int audio_decode_frame(MediaState *is)
                 continue;
             }
         }
-        qDebug()<<"audio pts = "<<aFrame->pts;
         if(pkt.data)
             av_packet_unref(&pkt);
-        // qDebug()<<"data_size = "<<data_size;
-        // av_free(aFrame);
         return data_size;
     }
+
 }
 static void audio_callback(void *userdata, Uint8 *stream, int len) {
     //qDebug()<<"audio callback";
     MediaState *is = (MediaState *) userdata;
     int len1, audio_data_size;
-    // double pts;
+    //double pts;
     /*   len是由SDL传入的SDL缓冲区的大小，如果这个缓冲未满，我们就一直往里填充数据 */
     while (len > 0) {
         /*  audio_buf_index 和 audio_buf_size 标示我们自己用来放置解码出来的数据的缓冲区，*/
@@ -303,14 +307,13 @@ int video_thread(void *arg)
     AVPacket pkt1, *packet = &pkt1;
 
     int ret, numBytes;
-    //double video_pts = 0; //当前视频的pts
-    //double audio_pts = 0; //音频pts
+    double video_pts = 0; //当前视频的pts
+    double audio_pts = 0; //音频pts
     ///解码视频相关
     AVFrame *pFrame, *pFrameRGB;
     uint8_t *out_buffer_rgb; //解码后的rgb数据
     pFrame = av_frame_alloc();
     pFrameRGB = av_frame_alloc();
-    int current = 0;
     ///这里我们改成了 将解码后的YUV数据转换成RGB32
 
 
@@ -344,16 +347,38 @@ int video_thread(void *arg)
             // {
             //     SDL_Delay(is->time_base * pFrame->pts - is->audio_pts);
             // }
-            qDebug()<<"video pts = "<<pFrame->pts;
-            while((av_gettime() - is->audio_pts) / 100 <= pFrame->pts && pFrame->pts != 0)
+            if (packet->dts == AV_NOPTS_VALUE && pFrame->opaque&& *(uint64_t*) pFrame->opaque != AV_NOPTS_VALUE)
             {
-                SDL_Delay(5);
+                video_pts = *(uint64_t *) pFrame->opaque;
             }
-            // SDL_Delay(is->time_base * (pFrame->pts - current));
+            else if (packet->dts != AV_NOPTS_VALUE)
+            {
+                video_pts = packet->dts;
+            }
+            else
+            {
+                video_pts = 0;
+            }
+
+            video_pts *= av_q2d(is->pStream->time_base);
+            qDebug()<<"is->pStream->time_base =  = "<<is->pStream->time_base.den<<" "<<is->pStream->time_base.num;
+            video_pts = synchronize_video(is, pFrame, video_pts);
+            while(1)
+            {
+                audio_pts = is->audio_clock;
+                //qDebug()<<"video_pts = "<<video_pts;
+                //qDebug()<<"audio_pts = "<<is->audio_clock;
+                if (video_pts <= audio_pts) break;
+
+                int delayTime = (video_pts - audio_pts) * 1000;
+
+                delayTime = delayTime > 5 ? 5:delayTime;
+
+                SDL_Delay(delayTime);
+            }
             is->Decoder->disPlayVideo(bgraImage); //调用激发信号的函数
-            current = pFrame->pts;
-            av_packet_unref(packet);
         }
+        av_packet_unref(packet);
     }
     av_free(pFrame);
     av_free(pFrameRGB);
@@ -369,8 +394,8 @@ MediaDecoder::MediaDecoder()
     mMediastate.aCodecC = NULL;
     mMediastate.vCodecC = NULL;
     mMediastate.audio_pts = 0;
-    mMediastate.aFrame = NULL;
-    mMediastate.pFrame = NULL;
+    mMediastate.aStream = NULL;
+    mMediastate.pStream = NULL;
 }
 MediaDecoder::~MediaDecoder()
 {
@@ -416,9 +441,6 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
         }
         qDebug()<<file_path;
         MediaState *is = &mMediastate;
-        // AVFormatContext* FormatCtx;
-        // AVCodecContext* aCodecC;
-        // AVCodecContext* pCodecC;
         const AVCodec *pCodec;
 
         const AVCodec *aCodec;
@@ -453,8 +475,8 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
         ///如果videoStream为-1 说明没有找到视频流
         qDebug()<<"get video and audio stream";
         if (mMediastate.videoStream >= 0) {
-            mMediastate.pFrame = is->FC->streams[mMediastate.videoStream];
-            pCodec = avcodec_find_decoder(is->pFrame->codecpar->codec_id);
+            mMediastate.pStream = is->FC->streams[mMediastate.videoStream];
+            pCodec = avcodec_find_decoder(is->pStream->codecpar->codec_id);
             if(is->vCodecC != NULL)
             {
                 avcodec_free_context(&mMediastate.vCodecC);
@@ -481,8 +503,8 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
             ///创建一个线程专门用来解码视频
         }
         if (mMediastate.audioStream >= 0) {
-            mMediastate.aFrame = is->FC->streams[mMediastate.audioStream];
-            mMediastate.audio_time_base = (double)is->aFrame->time_base.num / (double)is->FC->streams[mMediastate.audioStream]->time_base.den * 1000.0;
+            mMediastate.aStream = is->FC->streams[mMediastate.audioStream];
+            mMediastate.audio_time_base = (double)is->aStream->time_base.num / (double)is->FC->streams[mMediastate.audioStream]->time_base.den * 1000.0;
             is->audioExist = true;
             aCodec = avcodec_find_decoder(is->FC->streams[mMediastate.audioStream]->codecpar->codec_id);
             if(is->aCodecC != NULL)
