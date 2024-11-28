@@ -10,6 +10,8 @@ CONFIG += c++17
 # In order to do so, uncomment the following line.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
+DEFINES += _DEBUG_
+
 INCLUDEPATH += D:/environment/ffmpeg/include \
                D:/environment/SDL2/include \
 
@@ -25,19 +27,23 @@ LIBS += D:/environment/ffmpeg/lib/avcodec.lib \
 
 SOURCES += \
     glplayer.cpp \
+    imageplayer.cpp \
     main.cpp \
-    mainwindow.cpp \
     mediadecoder.cpp \
-    video_decode.cpp
+    videoplayer.cpp
 
 HEADERS += \
     glplayer.h \
-    mainwindow.h \
+    imageplayer.h \
     mediadecoder.h \
-    video_decode.h
+    videoplayer.h
 
 FORMS += \
-    mainwindow.ui
+    imageplayer.ui \
+    videoplayer.ui
+
+RESOURCES += \
+    resources.qrc
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

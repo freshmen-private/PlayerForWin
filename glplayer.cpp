@@ -24,11 +24,6 @@ GLPlayer::~GLPlayer()
 {
 }
 
-void GLPlayer::OpenFile(QImage& tmpimg)
-{
-
-}
-
 void GLPlayer::initializeGL()
 {
     initializeOpenGLFunctions();

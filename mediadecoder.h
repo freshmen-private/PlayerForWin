@@ -4,6 +4,7 @@
 #include <QQueue>
 #include <QImage>
 #include <QThread>
+#include "glplayer.h"
 
 extern "C"
 {
@@ -63,10 +64,23 @@ typedef struct MediaState{
 
     SDL_Thread* video_thread;
     double audio_time_base;
+    double video_time_base;
     int64_t audio_pts;
-    double time_base;
     double video_clock, audio_clock;
-    bool isPause;
+    double clock;
+
+    /// 跳转相关的变量
+    int        seek_req; //跳转标志
+    int64_t    seek_pos; //跳转的位置 -- 微秒
+    int        seek_flag_audio;//跳转标志 -- 用于音频线程中
+    int        seek_flag_video;//跳转标志 -- 用于视频线程中
+    double     seek_time; //跳转的时间(秒)  值和seek_pos是一样的
+
+    ///播放控制相关
+    int  play;
+    bool readFinished; //文件读取完毕
+    bool readThreadFinished;
+    bool videoThreadFinished;
 
     MediaDecoder *Decoder; //记录下这个类的指针  主要用于在线程里面调用激发信号的函数
 }MediaState;
@@ -75,16 +89,38 @@ class MediaDecoder:public QThread
 {
     Q_OBJECT
 public:
+
+    enum PlayerState
+    {
+        Playing,
+        Pause,
+        Stop
+    };
+
+public:
     explicit MediaDecoder();
     ~MediaDecoder();
 
-    void startPlay();
+    bool play();
+    bool pause();
+    bool stop(bool isWait = false);
 
-    void disPlayVideo(QImage image);
+    void seek();
+
+    int64_t getTotalTime();
+    double getCurrentTime();
+    PlayerState getPlayState();
+    void setPlayState(PlayerState s);
+
+    void displayVideo(QImage img);
+    QWidget *getVideoWidget(){return glplayer;}
 
 signals:
     void sendOneFrame(QImage); //没获取到一帧图像 就发送此信号
     void sendFrameSize(QRect rect);
+    void sendMediaDuration();
+
+    void sig_Statechanged(MediaDecoder::PlayerState);
 public slots:
     void getFileName(QString filename);
 
@@ -93,7 +129,11 @@ protected:
 
 private:
     QString mFileName;
+
     MediaState mMediastate;
+
+    PlayerState mPlayerState; //播放状态
+    GLPlayer* glplayer;
 };
 
 #endif // MEDIADECODER_H

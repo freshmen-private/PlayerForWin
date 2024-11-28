@@ -6,7 +6,6 @@
 #include <QOpenGLFunctions_3_3_Core>
 #include <QQueue>
 #include <QImage>
-#include <video_decode.h>
 
 class GLPlayer:public QOpenGLWidget, QOpenGLFunctions_3_3_Core
 {
