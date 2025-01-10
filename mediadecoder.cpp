@@ -97,6 +97,8 @@ static void packet_queue_clear(PacketQueue *q)
 
 static int audio_decode_frame(MediaState *is)
 {
+    if(is->play == MediaDecoder::PlayerState::Stop)
+        packet_queue_clear(is->aqueue);
     if(is->play == MediaDecoder::PlayerState::Pause)
         return 0;
     AVPacket pkt;
@@ -108,7 +110,7 @@ static int audio_decode_frame(MediaState *is)
         if(packet_queue_get(is->aqueue, &pkt, 1) < 0)
         {
             return -1;
-        }
+        }  // wocaonima
         // qDebug()<<"audio_pts = "<<pkt.pts;
         if (pkt.pts != AV_NOPTS_VALUE) {
             is->audio_clock = av_q2d(is->aStream->time_base) * pkt.pts;
@@ -332,6 +334,12 @@ int video_thread(void *arg)
                          is->vCodecC->width, is->vCodecC->height, 1);
     while(1)
     {
+        if(is->play == MediaDecoder::PlayerState::Stop)
+        {
+            packet_queue_clear(is->vqueue);
+            QThread::msleep(1);
+            continue;
+        }
         if(is->play == MediaDecoder::PlayerState::Pause)
         {
             QThread::msleep(1);
@@ -613,7 +621,6 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
             qDebug()<<"open audio decoder success";
             packet_queue_init(is->aqueue);
             audio_stream_component_open(is);
-            //is->audio_st = pFormatCtx->streams[mMediastate.audioStream];
         }
         qDebug()<<"open video and audio decoder";
         is->Decoder = this;
@@ -643,7 +650,6 @@ void MediaDecoder::run()//读视频文件，从视频文件解析视频音频pac
             else if( packet->stream_index == is->audioStream )
             {
                 packet_queue_put(is->aqueue, packet);
-                // qDebug()<<"aqueue put next";
                 //这里我们将数据存入队列 因此不调用 av_free_packet 释放
             }
             else
